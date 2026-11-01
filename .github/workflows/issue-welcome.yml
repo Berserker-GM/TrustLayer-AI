@@ -1,0 +1,34 @@
+name: Issue Welcome Comment
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  welcome-comment:
+    name: Post Welcome Comment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add welcome comment on issue creation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueAuthor = context.payload.issue.user.login;
+            const body = `👋 Thanks for opening this issue!
+
+Hey [@vib3withsimran](https://github.com/vib3withsimran)!
+
+### What happens next?
+- A maintainer will review your issue shortly.
+- Please do not open a Pull Request until a maintainer officially assigns this issue to you!
+- If you have any additional context, screenshots, or error logs, please attach them`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: body
+            });

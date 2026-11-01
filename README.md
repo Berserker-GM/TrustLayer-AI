@@ -175,7 +175,10 @@ For complete instructions on deploying to an Ubuntu VPS, configuring DNS, and se
 
 ## 🤝 Contributing
 
-We welcome open-source contributions! Please read our **[Contributing Guidelines (CONTRIBUTING.md)](CONTRIBUTING.md)** and review our **[Code of Conduct (CODE_OF_CONDUCT.md)](CODE_OF_CONDUCT.md)** before opening a Pull Request.
+We welcome open-source contributions!
+- 👉 **[Contributor Setup Guide (CONTRIBUTOR_SETUP.md)](CONTRIBUTOR_SETUP.md)**: Step-by-step local development setup with live hot-reloading.
+- 📖 **[Contributing Guidelines (CONTRIBUTING.md)](CONTRIBUTING.md)**: Coding standards, branch naming, and pull request checklist.
+- 🛡️ **[Code of Conduct (CODE_OF_CONDUCT.md)](CODE_OF_CONDUCT.md)**: Community standards and participant expectations.
 
 ---
 

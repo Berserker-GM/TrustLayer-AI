@@ -14,6 +14,9 @@ This project adheres to the [Contributor Covenant](CODE_OF_CONDUCT.md). By parti
 
 ## Development Setup
 
+> [!TIP]
+> For a detailed, step-by-step onboarding walkthrough with both Docker live-reload and native setup options, check out our **[Contributor Setup Guide](CONTRIBUTOR_SETUP.md)**.
+
 ### Prerequisites
 - [Docker](https://docs.docker.com/get-docker/) & Docker Compose (v2.20+)
 - [Node.js](https://nodejs.org/) v20+ (optional, for running outside containers)
