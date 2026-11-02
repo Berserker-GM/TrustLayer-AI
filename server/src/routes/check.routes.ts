@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { CheckResult } from '../models/CheckResult';
+import { Workspace } from '../models/Workspace';
 import { AuthenticatedRequest, authenticateAny, authenticateJWT } from '../middleware/auth';
 import { requireWorkspaceMember } from '../middleware/workspaceAccess';
 import { checkLimiter } from '../middleware/rateLimiter';
@@ -9,8 +10,51 @@ import { validate } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { aiServiceClient } from '../services/aiServiceClient';
 import { UsageService } from '../services/usageService';
+import { toCsv } from '../utils/csv';
 
 const router = Router();
+
+// Safety cap on the number of checks returned by a single export
+const EXPORT_MAX_ROWS = 10000;
+
+const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+const isoDate = z
+  .string()
+  .refine((v) => ISO_DATE_REGEX.test(v) && !Number.isNaN(Date.parse(v)), 'Must be an ISO 8601 date');
+
+const exportSchema = z.object({
+  query: z
+    .object({
+      format: z.enum(['csv', 'json'], {
+        errorMap: () => ({ message: "Format must be 'csv' or 'json'" }),
+      }),
+      verdict: z.enum(['SUPPORTED', 'CONTRADICTED', 'UNVERIFIABLE']).optional(),
+      from: isoDate.optional(),
+      to: isoDate.optional(),
+    })
+    .refine((q) => !q.from || !q.to || Date.parse(q.from) <= Date.parse(q.to), {
+      message: "'from' must be on or before 'to'",
+      path: ['from'],
+    }),
+});
+
+const CSV_COLUMNS = [
+  'id',
+  'createdAt',
+  'question',
+  'answer',
+  'overallVerdict',
+  'reliabilityScore',
+  'totalClaims',
+  'supportedCount',
+  'contradictedCount',
+  'unverifiableCount',
+  'documentId',
+  'checkedBy',
+  'selfConsistencyAgreement',
+];
 
 const checkSchema = z.object({
   body: z.object({
@@ -170,6 +214,111 @@ router.get(
         },
         error: null,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /api/v1/workspaces/:id/checks/export - Download full check history as CSV or JSON
+router.get(
+  '/:id/checks/export',
+  authenticateJWT,
+  requireWorkspaceMember,
+  validate(exportSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { format, verdict, from, to } = req.query as {
+        format: 'csv' | 'json';
+        verdict?: string;
+        from?: string;
+        to?: string;
+      };
+      const workspaceId = new mongoose.Types.ObjectId(req.workspaceId);
+      const query: any = { workspaceId };
+
+      if (verdict) {
+        query.overallVerdict = verdict;
+      }
+
+      if (from || to) {
+        query.createdAt = {};
+        if (from) query.createdAt.$gte = new Date(from);
+        if (to) {
+          // A date-only 'to' includes the whole day
+          if (DATE_ONLY_REGEX.test(to)) {
+            const end = new Date(to);
+            end.setUTCDate(end.getUTCDate() + 1);
+            query.createdAt.$lt = end;
+          } else {
+            query.createdAt.$lte = new Date(to);
+          }
+        }
+      }
+
+      const [records, workspace] = await Promise.all([
+        CheckResult.find(query)
+          .sort({ createdAt: -1 })
+          .limit(EXPORT_MAX_ROWS + 1)
+          .select('-__v')
+          .lean(),
+        Workspace.findById(workspaceId).select('slug').lean(),
+      ]);
+
+      const truncated = records.length > EXPORT_MAX_ROWS;
+      const items = truncated ? records.slice(0, EXPORT_MAX_ROWS) : records;
+
+      const workspaceLabel =
+        (workspace?.slug || req.workspaceId!).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      const date = new Date().toISOString().slice(0, 10);
+      const filename = `trustlayer-checks-${workspaceLabel}-${date}.${format}`;
+
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('X-Export-Row-Count', String(items.length));
+      res.setHeader('X-Export-Truncated', String(truncated));
+      res.setHeader(
+        'Access-Control-Expose-Headers',
+        'Content-Disposition, X-Export-Row-Count, X-Export-Truncated'
+      );
+
+      if (format === 'json') {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.status(200).send(
+          JSON.stringify(
+            {
+              workspaceId: req.workspaceId,
+              exportedAt: new Date().toISOString(),
+              filters: { verdict: verdict || null, from: from || null, to: to || null },
+              count: items.length,
+              truncated,
+              maxRows: EXPORT_MAX_ROWS,
+              items,
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
+
+      const rows = items.map((r) => [
+        r._id.toString(),
+        r.createdAt,
+        r.question,
+        r.answer,
+        r.overallVerdict,
+        r.reliabilityScore,
+        r.totalClaims,
+        r.supportedCount,
+        r.contradictedCount,
+        r.unverifiableCount,
+        r.documentId ? r.documentId.toString() : null,
+        r.checkedBy,
+        r.selfConsistencyAgreement ?? null,
+      ]);
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.status(200).send(toCsv(CSV_COLUMNS, rows));
     } catch (error) {
       next(error);
     }
