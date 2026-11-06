@@ -138,7 +138,7 @@ export default function HistoryPage() {
             <button
               key={format}
               onClick={() => handleExport(format)}
-              disabled={exporting !== null}
+              disabled={!workspace || exporting !== null}
               className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {exporting === format ? (
