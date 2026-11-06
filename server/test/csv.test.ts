@@ -20,6 +20,14 @@ test('sanitizeCsvValue prefixes formula triggers with a single quote', () => {
   assert.equal(sanitizeCsvValue('a=b'), 'a=b');
 });
 
+test('sanitizeCsvValue checks the first non-whitespace character', () => {
+  assert.equal(sanitizeCsvValue(' =1+1'), "' =1+1");
+  assert.equal(sanitizeCsvValue('   @SUM(A1)'), "'   @SUM(A1)");
+  assert.equal(sanitizeCsvValue('\n-2'), "'\n-2");
+  assert.equal(sanitizeCsvValue('  plain text'), '  plain text');
+  assert.equal(sanitizeCsvValue('   '), '   ');
+});
+
 test('sanitizeCsvValue formats non-string values', () => {
   assert.equal(sanitizeCsvValue(null), '');
   assert.equal(sanitizeCsvValue(undefined), '');

@@ -20,9 +20,21 @@ const EXPORT_MAX_ROWS = 10000;
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
+// Rejects dates the parser would silently roll over, e.g. 2026-02-30 -> 2026-03-02
+function isCalendarDate(value: string): boolean {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
 const isoDate = z
   .string()
-  .refine((v) => ISO_DATE_REGEX.test(v) && !Number.isNaN(Date.parse(v)), 'Must be an ISO 8601 date');
+  .refine(
+    (v) => ISO_DATE_REGEX.test(v) && isCalendarDate(v) && !Number.isNaN(Date.parse(v)),
+    'Must be a valid ISO 8601 date'
+  );
 
 // A date-only 'to' covers that whole UTC day; full datetimes are used as-is
 function parseRangeDate(value: string, endOfDay = false): Date {
@@ -260,7 +272,7 @@ router.get(
         CheckResult.find(query)
           .sort({ createdAt: -1 })
           .limit(EXPORT_MAX_ROWS + 1)
-          .select('-__v')
+          .select(format === 'csv' ? '-__v -claims' : '-__v')
           .lean(),
         Workspace.findById(workspaceId).select('slug').lean(),
       ]);

@@ -3,8 +3,11 @@ export type CsvValue = string | number | boolean | Date | null | undefined;
 // UTF-8 byte order mark so Excel detects the encoding of non-English text
 export const CSV_BOM = '﻿';
 
-// Leading characters that spreadsheet apps interpret as a formula (CSV injection)
-const FORMULA_TRIGGERS = ['=', '+', '-', '@', '\t', '\r'];
+// Characters that spreadsheet apps interpret as the start of a formula (CSV injection).
+// These are checked after leading whitespace, since some apps trim it before evaluating.
+const FORMULA_TRIGGERS = ['=', '+', '-', '@'];
+// Control characters that are dangerous as the very first character
+const LEADING_CONTROL_TRIGGERS = ['\t', '\r'];
 
 // Convert a value to text and neutralise formula injection by prefixing a single quote
 export function sanitizeCsvValue(value: CsvValue): string {
@@ -12,7 +15,11 @@ export function sanitizeCsvValue(value: CsvValue): string {
   if (value instanceof Date) return value.toISOString();
   if (typeof value !== 'string') return String(value);
 
-  return FORMULA_TRIGGERS.includes(value.charAt(0)) ? `'${value}` : value;
+  const firstNonWhitespace = value.trimStart().charAt(0);
+  if (LEADING_CONTROL_TRIGGERS.includes(value.charAt(0)) || FORMULA_TRIGGERS.includes(firstNonWhitespace)) {
+    return `'${value}`;
+  }
+  return value;
 }
 
 // RFC 4180: quote fields containing commas, quotes or line breaks, doubling inner quotes

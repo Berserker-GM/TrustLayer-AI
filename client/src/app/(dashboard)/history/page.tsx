@@ -45,20 +45,25 @@ export default function HistoryPage() {
   const [selectedCheck, setSelectedCheck] = useState<CheckItem | null>(null);
   const [exporting, setExporting] = useState<'csv' | 'json' | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportTruncatedRows, setExportTruncatedRows] = useState<number | null>(null);
 
   const handleExport = async (format: 'csv' | 'json') => {
     if (!workspace || exporting) return;
     try {
       setExporting(format);
       setExportError(null);
+      setExportTruncatedRows(null);
       const queryParams = new URLSearchParams({ format });
       if (verdictFilter !== 'ALL') {
         queryParams.append('verdict', verdictFilter);
       }
-      await downloadFile(
+      const result = await downloadFile(
         `/v1/workspaces/${workspace.id}/checks/export?${queryParams.toString()}`,
         `trustlayer-checks.${format}`
       );
+      if (result.truncated) {
+        setExportTruncatedRows(result.rowCount ?? 10000);
+      }
     } catch (err: any) {
       setExportError(err.message || 'Export failed. Please try again.');
     } finally {
@@ -153,14 +158,40 @@ export default function HistoryPage() {
       </div>
 
       {exportError && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center justify-between gap-3">
+        <div
+          role="alert"
+          className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center justify-between gap-3"
+        >
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>Export failed: {exportError}</span>
           </div>
           <button
             onClick={() => setExportError(null)}
+            aria-label="Dismiss export error"
             className="p-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {exportTruncatedRows !== null && (
+        <div
+          role="status"
+          className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>
+              Export was capped at the newest {exportTruncatedRows.toLocaleString()} checks. Older checks
+              matching this filter were not included.
+            </span>
+          </div>
+          <button
+            onClick={() => setExportTruncatedRows(null)}
+            aria-label="Dismiss export warning"
+            className="p-1 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>

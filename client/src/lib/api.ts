@@ -87,8 +87,14 @@ export async function request<T = any>(
   }
 }
 
+export interface DownloadResult {
+  filename: string;
+  rowCount: number | null;
+  truncated: boolean;
+}
+
 // Fetches an authenticated file response and saves it via a temporary object URL
-export async function downloadFile(endpoint: string, fallbackFilename: string): Promise<void> {
+export async function downloadFile(endpoint: string, fallbackFilename: string): Promise<DownloadResult> {
   const token = getToken();
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -113,6 +119,8 @@ export async function downloadFile(endpoint: string, fallbackFilename: string): 
 
   const disposition = res.headers.get('Content-Disposition') || '';
   const filename = /filename="([^"]+)"/.exec(disposition)?.[1] || fallbackFilename;
+  const rowCountHeader = res.headers.get('X-Export-Row-Count');
+  const truncated = res.headers.get('X-Export-Truncated') === 'true';
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -124,6 +132,12 @@ export async function downloadFile(endpoint: string, fallbackFilename: string): 
   link.remove();
   // Revoke after the browser has started the download
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  return {
+    filename,
+    rowCount: rowCountHeader !== null ? Number(rowCountHeader) : null,
+    truncated,
+  };
 }
 
 export const api = {
