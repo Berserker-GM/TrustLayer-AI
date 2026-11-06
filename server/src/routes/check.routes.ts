@@ -24,6 +24,15 @@ const isoDate = z
   .string()
   .refine((v) => ISO_DATE_REGEX.test(v) && !Number.isNaN(Date.parse(v)), 'Must be an ISO 8601 date');
 
+// A date-only 'to' covers that whole UTC day; full datetimes are used as-is
+function parseRangeDate(value: string, endOfDay = false): Date {
+  const date = new Date(value);
+  if (endOfDay && DATE_ONLY_REGEX.test(value)) {
+    date.setUTCHours(23, 59, 59, 999);
+  }
+  return date;
+}
+
 const exportSchema = z.object({
   query: z
     .object({
@@ -34,7 +43,7 @@ const exportSchema = z.object({
       from: isoDate.optional(),
       to: isoDate.optional(),
     })
-    .refine((q) => !q.from || !q.to || Date.parse(q.from) <= Date.parse(q.to), {
+    .refine((q) => !q.from || !q.to || parseRangeDate(q.from) <= parseRangeDate(q.to, true), {
       message: "'from' must be on or before 'to'",
       path: ['from'],
     }),
@@ -243,17 +252,8 @@ router.get(
 
       if (from || to) {
         query.createdAt = {};
-        if (from) query.createdAt.$gte = new Date(from);
-        if (to) {
-          // A date-only 'to' includes the whole day
-          if (DATE_ONLY_REGEX.test(to)) {
-            const end = new Date(to);
-            end.setUTCDate(end.getUTCDate() + 1);
-            query.createdAt.$lt = end;
-          } else {
-            query.createdAt.$lte = new Date(to);
-          }
-        }
+        if (from) query.createdAt.$gte = parseRangeDate(from);
+        if (to) query.createdAt.$lte = parseRangeDate(to, true);
       }
 
       const [records, workspace] = await Promise.all([
